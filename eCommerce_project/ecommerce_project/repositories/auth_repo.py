@@ -15,7 +15,6 @@ class AuthRepo():
             data['password'] = self._hash_password(data['password'])
             new_user = self.user_repo.insert_user(data)
             user = self.user_repo.get_user_with_id(new_user.id)
-            print("user in register: ", user.to_dict())
             token, payload = self._generate_token(user)
             return {"token": token, "payload": payload}
         except IntegrityError:

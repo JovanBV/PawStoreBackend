@@ -16,6 +16,7 @@ class ProductRepo(DBManager):
             return product.to_dict()
 
     def insert_product(self, data):
+        print("data in insert: ", data)
         with self.Session.begin() as session:
             product = Products(
                 name=data['name'],
