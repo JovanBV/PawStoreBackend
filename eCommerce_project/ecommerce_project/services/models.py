@@ -104,7 +104,7 @@ class Users(Base):
     def to_dict(self):
         return {
             "id": self.id,
-            "nombre": self.name,
+            "name": self.name,
             "email": self.email,
             "roles": self.get_roles()
         }

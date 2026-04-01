@@ -9,8 +9,6 @@ class ProductController:
     def create_product(self, data: dict):
         try:
             new_product = self.product_repo.insert_product(data)
-            print("newproduct in create product: ", new_product)
-
             return ProductModel.success_message(new_product)
         except ProductNotCreatedError as e:
             return ProductModel.product_not_created_error_message(e)

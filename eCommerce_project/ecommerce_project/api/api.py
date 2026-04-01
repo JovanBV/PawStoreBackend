@@ -22,12 +22,12 @@ class API():
         self._initialize_project()
 
     def _setup_dependencies(self):
-        
         self.user_controller = UserController()
         self.product_controller = ProductController()
         self.sales_controller = SalesController()
         self.auth_controller = AuthController()
         self.cache_manager = CacheManager()
+        self.app.url_map.strict_slashes = False
 
     def _setup_cors(self):
         CORS(self.app, resources={
