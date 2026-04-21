@@ -1,6 +1,6 @@
 from services.db_manager import DBManager
 from models.sales_model import InactiveProducts, InsufficientStock, CartInactiveError, CartNotFoundError, CartNotBelongToUserError
-from sqlalchemy import select, func
+from sqlalchemy import select, func, delete
 from datetime import datetime, timezone
 from services.models import ShoppingCarts, Products, CartItems
 from services.jwt_manager import JWTManager
@@ -10,18 +10,28 @@ class SalesRepo(DBManager):
         super().__init__()
         self.jwt_manager = JWTManager()
 
+    def delete_all_cart_items(self, cart_id, user_id):
+        with self.Session.begin() as session:
+            cart = self._get_cart_by_id(session, cart_id, user_id)
+            stmt = delete(CartItems).where(CartItems.shopping_cart_id == cart.id)
+            session.execute(stmt)
+            cart.total_amount = 0
+            session.flush()
+
     def get_shopping_cart(self, id, user_id):
         with self.Session() as session:
             cart = self._get_cart_by_id(session, id, user_id)
             stmt = select(CartItems).where(CartItems.shopping_cart_id == cart.id)
             cart_items = session.scalars(stmt).all()
 
-            if not cart_items:
-                return {"error": "cart empty."}
             if cart.is_deleted:
                 raise CartNotFoundError
             
-            return [item.to_dict() for item in cart_items]
+            return {
+                "id": cart.id,
+                "total_amount": cart.total_amount,
+                "items": [item.to_dict() for item in cart_items] if cart_items else []
+            }
 
     def get_receipt(self, receipt_id, user_id):
         with self.Session() as session:
@@ -63,6 +73,42 @@ class SalesRepo(DBManager):
             carts = session.scalars(stmt).all()
             return [cart.to_dict() for cart in carts if not cart.is_deleted]
 
+    def get_innactive_shopping_cart(self, id, user_id):
+        with self.Session() as session:
+            cart = self._get_innactive_cart(session, id, user_id)
+            stmt = select(CartItems).where(CartItems.shopping_cart_id == cart.id)
+            cart_items = session.scalars(stmt).all()
+
+            if cart.is_deleted:
+                raise CartNotFoundError
+            
+            response = {
+                "id": cart.id,
+                "total_amount": cart.total_amount,
+                "items": []
+            }
+
+            for item in cart_items:
+                stmt_product = select(Products).where(Products.id == item.product_id)
+                product = session.scalars(stmt_product).first()
+                
+                item_dict = item.to_dict()
+                item_dict["name"] = product.name if product else None
+                response["items"].append(item_dict)
+
+            return response
+
+    def _get_innactive_cart(self, session, cart_id, user_id):
+        cart = session.get(ShoppingCarts, cart_id)
+        if not cart:
+            raise CartNotFoundError(cart_id)
+        if cart.user_id != user_id:
+            raise CartNotBelongToUserError(cart_id)
+        if cart.is_deleted:
+            raise CartNotFoundError("Cart already deleted")
+
+        return cart
+
     def _get_product(self, session, product_id):
         product = session.get(Products, product_id)
         if not product:
@@ -73,8 +119,8 @@ class SalesRepo(DBManager):
         if not product.is_active:
             raise InactiveProducts(f"Product {product.name} is inactive")
     
-    def _validate_stock(self, product, quantity):
-        if product.stock < quantity:
+    def _validate_stock(self, product, amount):
+        if product.stock < amount:
             raise InsufficientStock(
                 f"Insufficient stock for {product.name}. Available: {product.stock}"
             )
@@ -115,25 +161,25 @@ class SalesRepo(DBManager):
         )
         return session.scalars(stmt).first()
     
-    def _update_cart_item_quantity(self, cart_item, additional_quantity, product):
-        new_quantity = cart_item.quantity + additional_quantity
+    def _update_cart_item_amount(self, cart_item, additional_amount, product):
+        new_amount = cart_item.amount + additional_amount
         
-        if product.stock < new_quantity:
+        if product.stock < new_amount:
             raise InsufficientStock(
                 f"Insufficient stock for {product.name}. "
                 f"Available: {product.stock}, "
-                f"Current in cart: {cart_item.quantity}, "
-                f"Requested: {additional_quantity}"
+                f"Current in cart: {cart_item.amount}, "
+                f"Requested: {additional_amount}"
             )
         
-        cart_item.quantity = new_quantity
+        cart_item.amount = new_amount
         return cart_item
     
-    def _create_cart_item(self, session, cart_id, product_id, quantity, price):
+    def _create_cart_item(self, session, cart_id, product_id, amount, price):
         new_item = CartItems(
             shopping_cart_id=cart_id,
             product_id=product_id,
-            quantity=quantity,
+            amount=amount,
             price=price
         )
         session.add(new_item)
@@ -141,7 +187,7 @@ class SalesRepo(DBManager):
         return new_item
     
     def _update_cart_total(self, session, cart):
-        stmt = select(func.sum(CartItems.quantity * CartItems.price)).where(
+        stmt = select(func.sum(CartItems.amount * CartItems.price)).where(
             CartItems.shopping_cart_id == cart.id
         )
         cart.total_amount = session.scalar(stmt) or 0
@@ -159,22 +205,22 @@ class SalesRepo(DBManager):
     def _validate_items_stock(self, session, items):
         for item in items:
             product = session.get(Products, item.product_id)
-            if product.stock < item.quantity:
+            if product.stock < item.amount:
                 raise InsufficientStock(f"Insufficient stock for {product.name}")
     
     def _reduce_product_stock(self, session, items):
         for item in items:
             product = session.get(Products, item.product_id)
-            product.stock -= item.quantity
+            product.stock -= item.amount
     
     def _calculate_cart_total(self, items):
-        return sum(item.quantity * item.price for item in items)
+        return sum(item.amount * item.price for item in items)
     
     def insert_product(self, data, user_id):
         with self.Session.begin() as session:
-            product = self._get_product(session, data["product_id"])
+            product = self._get_product(session, data["id"])
             self._validate_product_active(product)
-            self._validate_stock(product, data["quantity"])
+            self._validate_stock(product, data["amount"])
 
             if "cart_id" in data:
                 cart = self._get_cart_by_id(session, data["cart_id"], user_id)
@@ -182,17 +228,17 @@ class SalesRepo(DBManager):
                 cart = self._get_or_create_active_cart(session, user_id)
             
             existing_item = self._get_existing_cart_item(
-                session, cart.id, data["product_id"]
+                session, cart.id, data["id"]
             )
             
             if existing_item:
-                cart_item = self._update_cart_item_quantity(
-                    existing_item, data["quantity"], product
+                cart_item = self._update_cart_item_amount(
+                    existing_item, data["amount"], product
                 )
             else:
                 cart_item = self._create_cart_item(
-                    session, cart.id, data["product_id"], 
-                    data["quantity"], product.price
+                    session, cart.id, data["id"], 
+                    data["amount"], product.price
                 )
             
             self._update_cart_total(session, cart)
@@ -211,8 +257,8 @@ class SalesRepo(DBManager):
 
             items = self._get_cart_items(session, cart.id)
             if not items:
+                print("Error because of empty cart")
                 raise ValueError("Cannot checkout an empty cart")
-
             self._validate_items_stock(session, items)
             self._reduce_product_stock(session, items)
 

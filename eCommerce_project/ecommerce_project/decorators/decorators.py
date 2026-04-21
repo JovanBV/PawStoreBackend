@@ -44,8 +44,8 @@ def require_auth(func):
         except ValueError as e:
             return {'error': str(e)}, 401
         except Exception as e:
+            print("why edwin")
             return {'error': 'Invalid token'}, 401
-    
     return wrapper
 
 def require_fields(*required_fields):

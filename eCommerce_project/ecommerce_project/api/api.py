@@ -30,9 +30,10 @@ class API():
         self.app.url_map.strict_slashes = False
 
     def _setup_cors(self):
-        CORS(self.app, resources={
+        # mainly for usign along with Vite bundler on frontend
+        CORS(self.app, origins={
             r"/*": {
-                "origins": ["http://localhost:5000", "http://localhost:5174"],
+                "origins": ["http://localhost:5174", "http://localhost:5173"],
                 "methods": ["GET", "POST","PATCH", "PUT", "DELETE", "OPTIONS"],
                 "allow_headers": ["Content-Type", "Authorization"]
             }
