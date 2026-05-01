@@ -172,7 +172,7 @@ class CartItems(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     shopping_cart_id: Mapped[int] = mapped_column(ForeignKey("shopping_carts.id"))
     product_id: Mapped[int] = mapped_column(ForeignKey("products.id"))
-    quantity: Mapped[int] = mapped_column(Integer())
+    amount: Mapped[int] = mapped_column(Integer())
     price: Mapped[int] = mapped_column(Integer())
 
     shopping_cart: Mapped["ShoppingCarts"] = relationship(back_populates="cart_items")
@@ -183,6 +183,6 @@ class CartItems(Base):
             "id": self.id,
             "shopping_cart_id": self.shopping_cart_id,
             "product_id": self.product_id,
-            "quantity": self.quantity,
+            "amount": self.amount,
             "price": self.price
         }

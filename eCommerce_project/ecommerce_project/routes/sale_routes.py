@@ -2,8 +2,7 @@ from flask import Blueprint, request, g
 from decorators.decorators import handle_request, require_auth, require_fields, require_roles
 
 def create_sales_blueprint(sales_controller, cache_manager):
-    sales_bp = Blueprint('sales', __name__, url_prefix='/sales')
-
+    sales_bp = Blueprint('sales', __name__)
     @sales_bp.route('/cart/<int:cart_id>', methods=['GET'])
     @handle_request
     @require_auth
@@ -11,12 +10,14 @@ def create_sales_blueprint(sales_controller, cache_manager):
     def get_cart(cart_id):
         return sales_controller.get_shopping_cart(cart_id, g.user_data['id'])
 
+
+
     @sales_bp.route('/cart', methods=['POST'])
     @handle_request
     @require_auth
     @require_roles("admin", "user")
     def create_cart():
-        return sales_controller.create_shopping_cart(g.user_data['id'])
+        return sales_controller.create_shopping_cart(g.user_data['id'], request.get_json())
     
     @sales_bp.route('/cart/<int:cart_id>', methods=['DELETE'])
     @handle_request
@@ -36,7 +37,7 @@ def create_sales_blueprint(sales_controller, cache_manager):
     @handle_request
     @require_auth
     @require_roles("admin", "user")
-    @require_fields("product_id", "quantity")
+    @require_fields("product_id", "amount")
     def create_shopping_cart_product():
         return sales_controller.insert_product_to_cart(request.get_json(), g.user_data['id'])
 
@@ -44,17 +45,17 @@ def create_sales_blueprint(sales_controller, cache_manager):
     @handle_request
     @require_auth
     @require_roles("admin", "user")
-    @require_fields("cart_id")
     def get_checkout():
+        print("id", request.get_json())
         return sales_controller.all_process_checkout(request.get_json(), g.user_data['id'])
 
-    @sales_bp.route('/receipt/<int:id>', methods=['GET'])
+    @sales_bp.route('/receipt/<int:id>', methods=['POST'])
     @handle_request
     @require_auth
     @require_roles("admin", "user")
-    @require_fields()
     def get_receipt(id):
-        return sales_controller.get_receipt(id, g.user_data['id'])
+        user_email = request.get_json()
+        return sales_controller.get_receipt(id, g.user_data['id'], user_email)
     
     @sales_bp.route('/receipt/all', methods=['GET'])
     @handle_request
